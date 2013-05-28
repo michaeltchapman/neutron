@@ -29,6 +29,9 @@ NEXUS_PASSWORD = 'password'
 HOSTNAME = 'testhost'
 INSTANCE = 'testvm'
 NEXUS_PORTS = '1/10'
+NEXUS_PC_IP_ADDRESS = '2.2.2.2'
+NEXUS_PORTCHANNELS = 'portchannel:2'
+PC_HOSTNAME = 'testpchost'
 NEXUS_SSH_PORT = '22'
 NEXUS_DRIVER = ('neutron.plugins.cisco.nexus.'
                 'cisco_nexus_network_driver_v2.CiscoNEXUSDriver')
@@ -51,12 +54,16 @@ class TestCiscoNexusPlugin(base.BaseTestCase):
         self._nexus_switches = {
             (NEXUS_IP_ADDRESS, HOSTNAME): NEXUS_PORTS,
             (NEXUS_IP_ADDRESS, 'ssh_port'): NEXUS_SSH_PORT,
+            (NEXUS_PC_IP_ADDRESS, PC_HOSTNAME): NEXUS_PORTS,
+            (NEXUS_PC_IP_ADDRESS, 'ssh_port'): NEXUS_SSH_PORT,
         }
         self._hostname = HOSTNAME
+        self._pchostname = PC_HOSTNAME
 
         def new_nexus_init(self):
             self._client = importutils.import_object(NEXUS_DRIVER)
             self._nexus_ip = NEXUS_IP_ADDRESS
+            self._nexus_pc_ip = NEXUS_PC_IP_ADDRESS
             self._nexus_username = NEXUS_USERNAME
             self._nexus_password = NEXUS_PASSWORD
             self._nexus_ports = NEXUS_PORTS
@@ -65,7 +72,11 @@ class TestCiscoNexusPlugin(base.BaseTestCase):
                 self._nexus_ip: {
                     'username': self._nexus_username,
                     'password': self._nexus_password
-                }
+                },
+                self._nexus_pc_ip: {
+                    'username': self._nexus_username,
+                    'password': self._nexus_password
+                },
             }
             db.configure_db()
 
@@ -112,6 +123,26 @@ class TestCiscoNexusPlugin(base.BaseTestCase):
         self.assertEqual(new_net_dict[const.NET_VLAN_NAME],
                          self.second_vlan_name)
         self.assertEqual(new_net_dict[const.NET_VLAN_ID], self.second_vlan_id)
+
+    def test_create_network_portchannel(self):
+        """Tests creation of a network over a portchannel."""
+        tenant_id = self.tenant_id
+        net_name = self.net_name
+        net_id = self.net_id
+        vlan_name = self.vlan_name
+        vlan_id = self.vlan_id
+        second_net_name = self.second_net_name
+        second_net_id = self.second_net_id
+        second_vlan_name = self.second_vlan_name
+        second_vlan_id = self.second_vlan_id
+
+        new_net_dict = self._cisco_nexus_plugin.create_network(
+            tenant_id, net_name, net_id,
+            vlan_name, vlan_id, self._pchostname, INSTANCE)
+        self.assertEqual(new_net_dict[const.NET_ID], net_id)
+        self.assertEqual(new_net_dict[const.NET_NAME], self.net_name)
+        self.assertEqual(new_net_dict[const.NET_VLAN_NAME], self.vlan_name)
+        self.assertEqual(new_net_dict[const.NET_VLAN_ID], self.vlan_id)
 
     def test_nexus_delete_port(self):
         """Test deletion of a vlan."""
