@@ -38,7 +38,7 @@ class ServiceVMManager:
         #self._context.tenant_id=tenant_id
         self._core_plugin = manager.QuantumManager.get_plugin()
 
-    def dispatch_service_vm_real(self, vm_image, vm_flavor, mgmt_port,
+    def dispatch_service_vm(self, vm_image, vm_flavor, mgmt_port,
                                  ports=None):
         nics = [{'port-id': mgmt_port['id']}]
 
@@ -47,13 +47,13 @@ class ServiceVMManager:
 
         # TODO(bob-melander): catch any exceptions generated here
         #try:
-        server = self._nclient.servers.create('q_router', vm_image, vm_flavor,
+        server = self._nclient.servers.create('csr1kv_nrouter', vm_image, vm_flavor,
                                               nics=nics)
         #except:
         #    return None
         return server['server']
 
-    def delete_service_vm_real(self, id, mgmt_nw_id, delete_networks=False):
+    def delete_service_vm(self, id, mgmt_nw_id, delete_networks=False):
         nets_to_delete = []
         if delete_networks:
             ports = self._core_plugin.get_ports(self._context,
@@ -136,7 +136,7 @@ class ServiceVMManager:
 
     # TODO(bob-melander): Move this to fake_service_vm_lib.py file
     # with FakeServiceVMManager
-    def dispatch_service_vm(self, vm_image, vm_flavor, mgmt_port, ports):
+    def dispatch_service_vm_fake(self, vm_image, vm_flavor, mgmt_port, ports):
         vm_id=uuidutils.generate_uuid()
 
         if mgmt_port is not None:
@@ -161,7 +161,7 @@ class ServiceVMManager:
 
         return myserver['server']
 
-    def delete_service_vm(self, id, mgmt_nw_id, delete_networks=False):
+    def delete_service_vm_fake(self, id, mgmt_nw_id, delete_networks=False):
         ports = self._core_plugin.get_ports(self._context,
                                             filters={'device_id': [id]})
 
