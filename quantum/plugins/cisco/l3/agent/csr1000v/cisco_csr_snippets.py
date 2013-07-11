@@ -140,6 +140,8 @@ SET_DYN_SRC_TRL_INTFC = """
 
 """
 
+SNAT_CFG = "ip nat inside source list %s interface %s vrf %s overload"
+
 REMOVE_DYN_SRC_TRL_INTFC = """
 <config>
         <cli-config-data>

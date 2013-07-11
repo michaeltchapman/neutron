@@ -59,7 +59,7 @@ class CiscoCSRDriver():
             return self._csr_conn
         except Exception:
             LOG.exception("Failed getting connecting to CSR1000v. "
-                          "Conn.Params %s" % "localhost:8000:stack:cisco")
+                          "Conn.Params %s" % "localhost:8000:lab:lab")
 
     def _get_interfaces(self):
         """
@@ -93,6 +93,15 @@ class CiscoCSRDriver():
             else:
                 LOG.warn("Cannot find interface:" % interface_name)
                 return None
+
+    def interface_exists(self, interface):
+        ioscfg = self.get_running_config()
+        parse = CiscoConfParse(ioscfg)
+        intfs_raw = parse.find_lines("^interface "+interface)
+        if len(intfs_raw) > 0:
+            return True
+        else:
+            return False
 
     def get_vrfs(self):
         """
@@ -143,6 +152,15 @@ class CiscoCSRDriver():
             LOG.debug("%s is not present in config" % acl_no)
             return False
 
+    def cfg_exists(self, cfg_str):
+        ioscfg = self.get_running_config()
+        parse = CiscoConfParse(ioscfg)
+        cfg_raw = parse.find_lines("^"+cfg_str)
+        if len(cfg_raw) > 0:
+            return True
+        else:
+            return False
+
 
     def set_interface(self, name, ip_address, mask):
         conn = self._get_connection()
@@ -181,9 +199,10 @@ class CiscoCSRDriver():
 
     def remove_subinterface(self, subinterface, vlan_id, vrf_name, ip):
         conn = self._get_connection()
-        confstr = snippets.REMOVE_SUBINTERFACE % ( subinterface )
-        rpc_obj = conn.edit_config(target='running', config=confstr)
-        print self._check_response(rpc_obj, 'REMOVE_SUBINTERFACE')
+        if self.interface_exists(subinterface):
+            confstr = snippets.REMOVE_SUBINTERFACE % ( subinterface )
+            rpc_obj = conn.edit_config(target='running', config=confstr)
+            print self._check_response(rpc_obj, 'REMOVE_SUBINTERFACE')
 
     def _get_interface_cfg(self, interface):
         ioscfg = self.get_running_config()
@@ -236,9 +255,11 @@ class CiscoCSRDriver():
             rpc_obj = conn.edit_config(target='running', config=confstr)
             print self._check_response(rpc_obj, 'REMOVE_ACL')
 
-            confstr = snippets.REMOVE_DYN_SRC_TRL_INTFC % (acl_no, outer_intfc, vrf_name)
-            rpc_obj = conn.edit_config(target='running', config=confstr)
-            print self._check_response(rpc_obj, 'REMOVE_DYN_SRC_TRL_INTFC')
+            confstr = snippets.SNAT_CFG % (acl_no, outer_intfc, vrf_name)
+            if self.cfg_exists(confstr):
+                confstr = snippets.REMOVE_DYN_SRC_TRL_INTFC % (acl_no, outer_intfc, vrf_name)
+                rpc_obj = conn.edit_config(target='running', config=confstr)
+                print self._check_response(rpc_obj, 'REMOVE_DYN_SRC_TRL_INTFC')
 
             confstr = snippets.REMOVE_NAT % (inner_intfc, 'inside')
             rpc_obj = conn.edit_config(target='running', config=confstr)
@@ -323,7 +344,7 @@ class CiscoCSRDriver():
 ##################
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG, filemode="w")
+    logging.basicConfig(level=logging.INFO, filemode="w")
     driver = CiscoCSRDriver("localhost", 8000, "lab", 'lab')
     if driver._get_connection():
         logging.info('Connection Established!')
@@ -350,12 +371,16 @@ if __name__ == "__main__":
         #driver.add_static_route('172.16.0.0', '255.255.0.0', '10.0.20.254', 'qrouter-131666dc')
         #driver.remove_static_route('172.16.0.0', '255.255.0.0', '10.0.20.254', 'qrouter-131666dc')
         #driver.remove_vrf('wrong_vrf') #Wrong vrf
-        driver.create_vrf("my_dummy_vrf")
-        driver.get_vrfs()
+        #driver.create_vrf("my_dummy_vrf")
+        #driver.get_vrfs()
         #driver.remove_vrf("my_dummy_vrf")
         #driver._get_floating_ip_cfg()
         #print driver._check_acl('acl_10', '10.0.3.0', '0.0.0.255')
         #print driver._check_acl('acl_10', '10.0.4.0', '0.0.0.255')
         #print driver._check_acl('acl_101', '10.0.3.0', '0.0.0.255')
-
+        #driver.remove_subinterface('GigabitEthernet2.101', '101', 'qrouter-131666dc', '10.0.11.1')
+        #print driver.if_interface_exists('GigabitEthernet2.10')
+        #print driver.if_interface_exists('GigabitEthernet1.10')
+        print driver.cfg_exists("ip nat inside source list acl_12 interface GigabitEthernet2.100 vrf nrouter-93bff2 overload")
+        print driver.cfg_exists("ip nat inside source list acl_121 interface GigabitEthernet2.100 vrf nrouter-93bff2 overload")
         print "All done"
