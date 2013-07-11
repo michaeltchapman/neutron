@@ -25,8 +25,6 @@ from quantum.agent.common import config
 from quantum.agent.linux import external_process
 from quantum.agent.linux import interface
 from quantum.agent.linux import ip_lib
-from quantum.agent.linux import iptables_manager
-from quantum.agent.linux import utils
 from quantum.agent import rpc as agent_rpc
 from quantum.common import constants as l3_constants
 from quantum.common import topics
@@ -45,10 +43,6 @@ from quantum.plugins.cisco.l3.agent.csr1000v import cisco_csr_network_driver
 from quantum import service as quantum_service
 
 LOG = logging.getLogger(__name__)
-NS_PREFIX = 'qrouter-'
-INTERNAL_DEV_PREFIX = 'qr-'
-EXTERNAL_DEV_PREFIX = 'qg-'
-
 
 class L3PluginApi(proxy.RpcProxy):
     """Agent side of the l3 agent RPC API.
@@ -138,15 +132,7 @@ class RouterInfo(object):
         self.root_helper = root_helper
         self.use_namespaces = use_namespaces
         self.router = router
-        self.iptables_manager = iptables_manager.IptablesManager(
-            root_helper=root_helper,
-            #FIXME(danwent): use_ipv6=True,
-            namespace=self.ns_name())
         self.routes = []
-
-    def ns_name(self):
-        if self.use_namespaces:
-            return NS_PREFIX + self.router_id
 
 
 class L3NATAgent(manager.Manager):
@@ -456,12 +442,6 @@ class L3NATAgent(manager.Manager):
     def _get_ex_gw_port(self, ri):
         return ri.router.get('gw_port')
 
-    def get_internal_device_name(self, port_id):
-        return (INTERNAL_DEV_PREFIX + port_id)[:self.driver.DEV_NAME_LEN]
-
-    def get_external_device_name(self, port_id):
-        return (EXTERNAL_DEV_PREFIX + port_id)[:self.driver.DEV_NAME_LEN]
-
     def external_gateway_added(self, ri, ex_gw_port, internal_cidrs):
         #ToDo (Hareesh) : Parameterize interface name
         trunk_info = ex_gw_port['trunk_info']
@@ -501,9 +481,7 @@ class L3NATAgent(manager.Manager):
                                                    ex_gw_ip, internal_cidr,
                                                    inner_vlan, outer_vlan)
 
-
     def external_gateway_removed(self, ri, ex_gw_port, internal_cidrs):
-        interface_name = self.get_external_device_name(ex_gw_port['id'])
         ip = ex_gw_port['fixed_ips'][0]['ip_address']
         outer_vlan = ex_gw_port['trunk_info']['segmentation_id']
         _ext_name = ex_gw_port['trunk_info']['hosting_port_name']
@@ -514,8 +492,6 @@ class L3NATAgent(manager.Manager):
 
     def internal_network_added(self, ri, ex_gw_port, network_id, port_id,
                                internal_cidr, mac_address, trunk_info):
-        interface_name = self.get_internal_device_name(port_id)
-
         #Hareesh: CSR changes
         #Internal Port
         inner_vlan = trunk_info['segmentation_id']
@@ -538,7 +514,6 @@ class L3NATAgent(manager.Manager):
 
     def internal_network_removed(self, ri, ex_gw_port, port_id,
                                  internal_cidr, trunk_info):
-        #interface_name = self.get_internal_device_name(port_id)
         #Hareesh : CSR
         inner_vlan = trunk_info['segmentation_id']
         _name = trunk_info['hosting_port_name']
@@ -559,7 +534,6 @@ class L3NATAgent(manager.Manager):
 
     def floating_ip_added(self, ri, ex_gw_port, floating_ip, fixed_ip):
         ip_cidr = str(floating_ip) + '/32'
-        interface_name = self.get_external_device_name(ex_gw_port['id'])
         #ToDo(Hareesh) : Check send gratiotious ARP packet
         #Hareesh:CSR
         self._csr_add_floating_ip(ri, floating_ip, fixed_ip)
@@ -567,7 +541,6 @@ class L3NATAgent(manager.Manager):
     def floating_ip_removed(self, ri, ex_gw_port, floating_ip, fixed_ip):
         ip_cidr = str(floating_ip) + '/32'
         net = netaddr.IPNetwork(ip_cidr)
-        interface_name = self.get_external_device_name(ex_gw_port['id'])
         #Hareesh: CSR
         self._csr_remove_floating_ip(ri, floating_ip, fixed_ip)
 
