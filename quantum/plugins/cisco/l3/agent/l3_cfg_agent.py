@@ -44,6 +44,8 @@ from quantum import service as quantum_service
 
 LOG = logging.getLogger(__name__)
 
+N_ROUTER_PREFIX = 'nrouter-'
+
 class L3PluginApi(proxy.RpcProxy):
     """Agent side of the l3 agent RPC API.
 
@@ -62,6 +64,7 @@ class L3PluginApi(proxy.RpcProxy):
     def get_routers(self, context, fullsync=True, router_id=None):
         """Make a remote process call to retrieve the sync data for routers."""
         router_ids = [router_id] if router_id else None
+        #Note that the l3_cfg_agent makes a call on 'cfg_sync_routers'
         return self.call(context,
                          self.make_msg('cfg_sync_routers', host=self.host,
                                        fullsync=fullsync,
@@ -81,7 +84,9 @@ class L3PluginApi(proxy.RpcProxy):
                          topic=self.topic)
 
 
-#Hareesh
+#Additional class to store the Hosting Entities to driver bindings.
+#Thus we can reuse drivers to different logical routers in the same
+# hosting entity
 class HostingEntities(object):
 
     def __init__(self):
@@ -122,6 +127,7 @@ class HostingEntities(object):
             if he_id not in self.router_id_hosting_entities.values():
                 del self._drivers[he_id]
 
+
 class RouterInfo(object):
 
     def __init__(self, router_id, root_helper, use_namespaces, router):
@@ -133,6 +139,9 @@ class RouterInfo(object):
         self.use_namespaces = use_namespaces
         self.router = router
         self.routes = []
+
+    def router_name(self):
+        return N_ROUTER_PREFIX+self.router_id
 
 
 class L3NATAgent(manager.Manager):
@@ -201,7 +210,7 @@ class L3NATAgent(manager.Manager):
         super(L3NATAgent, self).__init__(host=self.conf.host)
 
     def _csr_get_vrf_name(self, ri):
-        return ri.ns_name()[:self.driver.DEV_NAME_LEN]
+        return ri.router_name()[:self.driver.DEV_NAME_LEN]
 
     def _csr_create_vrf(self, ri):
         vrf_name = self._csr_get_vrf_name(ri)
@@ -213,7 +222,7 @@ class L3NATAgent(manager.Manager):
         csr_driver = self._he.get_driver(ri.router_id)
         csr_driver.remove_vrf(vrf_name)
 
-    def _csr_create_subinterface(self, ri,  intfc_no,
+    def _csr_create_subinterface(self, ri, intfc_no,
                                  vlanid, ip_cidrs ):
         if len(ip_cidrs) > 1:
             #ToDo (Hareesh): Implement ip_cidrs>1
@@ -341,9 +350,8 @@ class L3NATAgent(manager.Manager):
         del self.router_info[router_id]
         #Hareesh : CSR
         if self.conf.use_hosting_entities:
-            self._csr_create_vrf(ri)
+            self._csr_remove_vrf(ri)
             self._he.remove_driver(router_id)
-
 
     def _set_subnet_info(self, port):
         ips = port['fixed_ips']
@@ -372,13 +380,12 @@ class L3NATAgent(manager.Manager):
             self._set_subnet_info(p)
             ri.internal_ports.append(p)
             self.internal_network_added(ri, ex_gw_port,
-                                        p['network_id'], p['id'],
-                                        p['ip_cidr'], p['mac_address'],
+                                        p['ip_cidr'],
                                         p['trunk_info'])
 
         for p in old_ports:
             ri.internal_ports.remove(p)
-            self.internal_network_removed(ri, ex_gw_port, p['id'],
+            self.internal_network_removed(ri, ex_gw_port,
                                           p['ip_cidr'],
                                           p['trunk_info'])
 
@@ -454,8 +461,8 @@ class L3NATAgent(manager.Manager):
         #ToDo(Hareesh) : Check need to send gratuitous ARP
         #ToDo: Check if we need this
         ex_gw_ip = ex_gw_port['subnet']['gateway_ip']
-        if ex_gw_port['subnet']['gateway_ip']:
-            #ToDo (Hareesh): Check this
+        if ex_gw_ip:
+            #ToDo (Hareesh): Set default gateway/network
             # cmd = ['route', 'add', 'default', 'gw', gw_ip]
             # if self.conf.use_namespaces:
             #     ip_wrapper = ip_lib.IPWrapper(self.root_helper,
@@ -468,7 +475,6 @@ class L3NATAgent(manager.Manager):
 
         #Apply NAT rules for internal networks
         if len(ri.internal_ports) > 0:
-            #Internal networks exist
             for internal_port in ri.internal_ports:
                 trunk_info = internal_port['trunk_info']
                 inner_vlan = trunk_info['segmentation_id']
@@ -476,7 +482,6 @@ class L3NATAgent(manager.Manager):
                 #Name will be of format 'T1:x' where x is the index(1,2,..)
                 int_itfc_no = str(int(_name.split(':')[1])*2-1)
                 internal_cidr = internal_port['ip_cidr']
-
                 self._csr_add_internalnw_nat_rules(ri, int_itfc_no, ext_itfc_no,
                                                    ex_gw_ip, internal_cidr,
                                                    inner_vlan, outer_vlan)
@@ -487,13 +492,26 @@ class L3NATAgent(manager.Manager):
         _ext_name = ex_gw_port['trunk_info']['hosting_port_name']
         #Name will be of format 'T2:x' where x is the index(1,2,..)
         ext_infc_no = str(int(_ext_name.split(':')[1])*2)
+        #Remove internal network NAT rules
+        if len(ri.internal_ports) > 0:
+            for port in ri.internal_ports:
+                trunk_info = port['trunk_info']
+                inner_vlan = trunk_info['segmentation_id']
+                _name = trunk_info['hosting_port_name']
+                #Name will be of format 'T1:x' where x is the index(1,2,..)
+                int_itfc_no = str(int(_name.split(':')[1])*2-1)
+                internal_cidr = port['ip_cidr']
+                self._csr_remove_internalnw_nat_rules(ri, int_itfc_no,
+                                                      ext_infc_no,
+                                                      internal_cidr,
+                                                      inner_vlan,
+                                                      outer_vlan)
+        #Remove external network subinterface
         self._csr_remove_subinterface(ri, ext_infc_no, outer_vlan, ip)
-        #ToDo(Hareesh) : Remove external gateway nat rules, if needed
+        #ToDo(Hareesh): Remove default network
 
-    def internal_network_added(self, ri, ex_gw_port, network_id, port_id,
-                               internal_cidr, mac_address, trunk_info):
-        #Hareesh: CSR changes
-        #Internal Port
+    def internal_network_added(self, ri, ex_gw_port,
+                               internal_cidr, trunk_info):
         inner_vlan = trunk_info['segmentation_id']
         _name = trunk_info['hosting_port_name']
         #Name will be of format 'T1:x' where x is the index(1,2,..)
@@ -512,7 +530,7 @@ class L3NATAgent(manager.Manager):
                                                ex_gw_ip, internal_cidr,
                                                inner_vlan, outer_vlan)
 
-    def internal_network_removed(self, ri, ex_gw_port, port_id,
+    def internal_network_removed(self, ri, ex_gw_port,
                                  internal_cidr, trunk_info):
         #Hareesh : CSR
         inner_vlan = trunk_info['segmentation_id']
@@ -530,18 +548,11 @@ class L3NATAgent(manager.Manager):
         #Delete sub-interface now
         self._csr_remove_subinterface(ri, itfc_no, inner_vlan, internal_cidr)
 
-
-
     def floating_ip_added(self, ri, ex_gw_port, floating_ip, fixed_ip):
-        ip_cidr = str(floating_ip) + '/32'
         #ToDo(Hareesh) : Check send gratiotious ARP packet
-        #Hareesh:CSR
         self._csr_add_floating_ip(ri, floating_ip, fixed_ip)
 
     def floating_ip_removed(self, ri, ex_gw_port, floating_ip, fixed_ip):
-        ip_cidr = str(floating_ip) + '/32'
-        net = netaddr.IPNetwork(ip_cidr)
-        #Hareesh: CSR
         self._csr_remove_floating_ip(ri, floating_ip, fixed_ip)
 
     def router_deleted(self, context, router_id):
