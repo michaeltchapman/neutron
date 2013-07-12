@@ -25,7 +25,7 @@ if [ "$isAdmin" == "No" ]; then
    echo " No, it does not. Giving it admin rights."
    admUserId=`keystone user-get $adminUser | awk '{ if ($2 == "id") print $4 }'`
    admRoleId=`keystone role-get $adminRole | awk '{ if ($2 == "id") print $4 }'`
-   keystone user-role-add --os-username $adminUser --os-tenant-name --user-id $admUserId --role-id $admRoleId --tenant-id $tenantId
+   keystone user-role-add --user-id $admUserId --role-id $admRoleId --tenant-id $tenantId
 else
    echo " Yes, it has."
 fi
