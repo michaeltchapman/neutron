@@ -19,13 +19,13 @@ fi
 
 
 echo -n "Checking if $adminUser user has admin privileges in $l3AdminTenant tenant ..."
-isAdmin=`keystone --os_username $adminUser --os_tenant_name $l3AdminTenant user-role-list 2>&1 | awk 'BEGIN { res="No" } { if ($4 == "admin") res="Yes"; } END { print res; }'`
+isAdmin=`keystone --os-username $adminUser --os-tenant-name $l3AdminTenant user-role-list 2>&1 | awk 'BEGIN { res="No" } { if ($4 == "admin") res="Yes"; } END { print res; }'`
 
 if [ "$isAdmin" == "No" ]; then
    echo " No, it does not. Giving it admin rights."
    admUserId=`keystone user-get $adminUser | awk '{ if ($2 == "id") print $4 }'`
    admRoleId=`keystone role-get $adminRole | awk '{ if ($2 == "id") print $4 }'`
-   keystone user-role-add --os_username $adminUser --os_tenant_name --user_id $admUserId --role_id $admRoleId --tenant_id $tenantId
+   keystone user-role-add --user-id $admUserId --role-id $admRoleId --tenant-id $tenantId
 else
    echo " Yes, it has."
 fi

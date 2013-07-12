@@ -63,11 +63,11 @@ class ServiceVMManager:
                 if port['network_id'] != mgmt_nw_id:
                     nets_to_delete.append(port['network_id'])
 
-        # TODO(bob-melander): catch any exceptions generated here
-        #try:
-        self._nclient.servers.delete(id)
-        #except:
-        #    return False
+        # TODO(bob-melander): properly catch any exceptions generated here
+        try:
+            self._nclient.servers.delete(id)
+        except n_exc.ClientException:
+            pass
         for net in nets_to_delete:
             self._core_plugin.delete_network(self._context, net)
         return True
