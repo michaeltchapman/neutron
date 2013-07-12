@@ -18,6 +18,7 @@
 # @author: Bob Melander, Cisco Systems, Inc.
 
 from novaclient.v1_1 import client
+from novaclient import exceptions as n_exc
 from quantum.api.v2 import attributes
 from quantum.common import exceptions as q_exc
 from quantum import context as q_context
@@ -38,19 +39,18 @@ class ServiceVMManager:
         #self._context.tenant_id=tenant_id
         self._core_plugin = manager.QuantumManager.get_plugin()
 
-    def dispatch_service_vm(self, vm_image, vm_flavor, mgmt_port,
-                                 ports=None):
+    def dispatch_service_vm(self, vm_image, vm_flavor, mgmt_port, ports=None):
         nics = [{'port-id': mgmt_port['id']}]
 
         for port in ports:
             nics.append({'port-id': port['id']})
 
-        # TODO(bob-melander): catch any exceptions generated here
-        #try:
-        server = self._nclient.servers.create('csr1kv_nrouter', vm_image, vm_flavor,
-                                              nics=nics)
-        #except:
-        #    return None
+        # TODO(bob-melander): properly catch any exceptions generated here
+        try:
+            server = self._nclient.servers.create('csr1kv_nrouter', vm_image, vm_flavor,
+                                                  nics=nics)
+        except n_exc.ClientException:
+            return None
         return server['server']
 
     def delete_service_vm(self, id, mgmt_nw_id, delete_networks=False):
@@ -63,11 +63,11 @@ class ServiceVMManager:
                 if port['network_id'] != mgmt_nw_id:
                     nets_to_delete.append(port['network_id'])
 
-        # TODO(bob-melander): catch any exceptions generated here
-        #try:
-        self._nclient.servers.delete(id)
-        #except:
-        #    return False
+        # TODO(bob-melander): properly catch any exceptions generated here
+        try:
+            self._nclient.servers.delete(id)
+        except n_exc.ClientException:
+            pass
         for net in nets_to_delete:
             self._core_plugin.delete_network(self._context, net)
         return True
