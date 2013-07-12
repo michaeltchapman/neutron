@@ -60,7 +60,7 @@ router_appliance_opts = [
                help=_("Name of the L3 admin tenant")),
     cfg.StrOpt('default_router_type', default='CSR1kv',
                help=_("Default type of router to create")),
-    cfg.StrOpt('csr1kv_flavor', default='csr1kv_router',
+    cfg.IntOpt('csr1kv_flavor', default=621,
                help=_("Nova flavor used for CSR1kv VM")),
     cfg.StrOpt('csr1kv_image', default='csr1kv_openstack_dhcp',
                help=_("Glance image used for CSR1kv VM")),
@@ -180,7 +180,7 @@ class L3_router_appliance_db_mixin(extraroute_db.ExtraRoute_db_mixin):
     @classmethod
     def l3_tenant_id(cls):
         if cls._l3_tenant_uuid is None:
-            endpoint = (cfg.CONF.keystone_authtoken.auth_protocol + "://" +
+            auth_url = (cfg.CONF.keystone_authtoken.auth_protocol + "://" +
                         cfg.CONF.keystone_authtoken.auth_host + ":" +
                         str(cfg.CONF.keystone_authtoken.auth_port) + "/v2.0")
             user = cfg.CONF.keystone_authtoken.admin_user
@@ -188,7 +188,7 @@ class L3_router_appliance_db_mixin(extraroute_db.ExtraRoute_db_mixin):
             tenant = cfg.CONF.keystone_authtoken.admin_tenant_name
             keystone = k_client.Client(username=user, password=pw,
                                        tenant_name=tenant,
-                                       auth_url=endpoint)
+                                       auth_url=auth_url)
             try:
                 tenant = keystone.tenants.find(name=cfg.CONF.l3_admin_tenant)
                 cls._l3_tenant_uuid = tenant.id
@@ -238,15 +238,15 @@ class L3_router_appliance_db_mixin(extraroute_db.ExtraRoute_db_mixin):
     @classmethod
     def svc_vm_mgr(cls):
         if cls._svc_vm_mgr is None:
-            endpoint = (cfg.CONF.keystone_authtoken.auth_protocol + "://" +
+            auth_url = (cfg.CONF.keystone_authtoken.auth_protocol + "://" +
                         cfg.CONF.keystone_authtoken.auth_host + ":" +
                         str(cfg.CONF.keystone_authtoken.auth_port) + "/v2.0")
             username = cfg.CONF.keystone_authtoken.admin_user
             pw = cfg.CONF.keystone_authtoken.admin_password
-            tenant = cls.l3_tenant_id()
+            tenant = cfg.CONF.l3_admin_tenant
             cls._svc_vm_mgr = service_vm_lib.ServiceVMManager(
                 user=username, passwd=pw, l3_admin_tenant=tenant,
-                auth_url=endpoint)
+                auth_url=auth_url)
         return cls._svc_vm_mgr
 
     def create_router(self, context, router):

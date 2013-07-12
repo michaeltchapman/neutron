@@ -18,6 +18,7 @@
 # @author: Bob Melander, Cisco Systems, Inc.
 
 from novaclient.v1_1 import client
+from novaclient import exceptions as n_exc
 from quantum.api.v2 import attributes
 from quantum.common import exceptions as q_exc
 from quantum import context as q_context
@@ -45,12 +46,16 @@ class ServiceVMManager:
         for port in ports:
             nics.append({'port-id': port['id']})
 
-        # TODO(bob-melander): catch any exceptions generated here
-        #try:
-        server = self._nclient.servers.create('csr1kv_nrouter', vm_image, vm_flavor,
-                                              nics=nics)
-        #except:
-        #    return None
+        try:
+            server = self._nclient.servers.create('csr1kv_nrouter', vm_image,
+                                                  vm_flavor, nics=nics)
+        except (n_exc.UnsupportedVersion, n_exc.CommandError,
+                n_exc.AuthorizationFailure, n_exc.NoUniqueMatch,
+                n_exc.AuthSystemNotFound, n_exc.NoTokenLookupException,
+                n_exc.EndpointNotFound, n_exc.AmbiguousEndpoints,
+                n_exc.ConnectionRefused, n_exc.ClientException) as e:
+            LOG.error(_('Failed to create service VM instance: %s'), e)
+            return None
         return server['server']
 
     def delete_service_vm(self, id, mgmt_nw_id, delete_networks=False):
@@ -62,25 +67,50 @@ class ServiceVMManager:
             for port in ports:
                 if port['network_id'] != mgmt_nw_id:
                     nets_to_delete.append(port['network_id'])
-
-        # TODO(bob-melander): properly catch any exceptions generated here
+        result = True
         try:
             self._nclient.servers.delete(id)
-        except n_exc.ClientException:
-            pass
+        except (n_exc.UnsupportedVersion, n_exc.CommandError,
+                n_exc.AuthorizationFailure, n_exc.NoUniqueMatch,
+                n_exc.AuthSystemNotFound, n_exc.NoTokenLookupException,
+                n_exc.EndpointNotFound, n_exc.AmbiguousEndpoints,
+                n_exc.ConnectionRefused, n_exc.ClientException) as e:
+            LOG.error(_('Failed to delete service VM instance %(id)s, '
+                        'due to %(err)s'), {'id': id, 'err': e})
+            result = False
         for net in nets_to_delete:
-            self._core_plugin.delete_network(self._context, net)
-        return True
+            try:
+                self._core_plugin.delete_network(self._context, net)
+            except q_exc.QuantumException as e:
+                LOG.error(_('Failed to delete network %(net_id)s for service '
+                            'VM %(vm_id) due to %(err)s'), {'net_id': net,
+                                                            'vm_id': id,
+                                                            'err': e})
+        return result
 
-    def cleanup_for_service_vm(self, mgmt_port=None, t1_n=[], t2_n=[],
-                               t1_p=[], t2_p=[]):
+    def cleanup_for_service_vm(self, mgmt_port, t1_n, t2_n, t1_p, t2_p):
          # Remove anything created.
         if mgmt_port is not None:
-            self._core_plugin.delete_port(self._context, mgmt_port['id'])
-        for item in t1_n + t2_n:
-            self._core_plugin.delete_network(self._context, item['id'])
+            try:
+                self._core_plugin.delete_port(self._context, mgmt_port['id'])
+            except q_exc.QuantumException as e:
+                LOG.error(_('Failed to delete management port %(port_id)s for '
+                            'service vm due to %(err)s'),
+                          {'port_id': mgmt_port['id'], 'err': e})
         for item in t1_p + t2_p:
-            self._core_plugin.delete_port(self._context, item['id'])
+            try:
+                self._core_plugin.delete_port(self._context, item['id'])
+            except q_exc.QuantumException as e:
+                LOG.error(_('Failed to delete trunk port %(port_id)s for '
+                            'service vm due to %(err)s'),
+                          {'port_id': item['id'], 'err': e})
+        for item in t1_n + t2_n:
+            try:
+                self._core_plugin.delete_network(self._context, item['id'])
+            except q_exc.QuantumException as e:
+                LOG.error(_('Failed to delete trunk network %(net_id)s for '
+                            'service vm due to %(err)s'),
+                          {'net_id': item['id'], 'err': e})
 
     def create_service_vm_resources(self, mgmt_nw_id, tenant_id, max_hosted):
         mgmt_port = None
@@ -95,8 +125,8 @@ class ServiceVMManager:
                                'fixed_ips': attributes.ATTR_NOT_SPECIFIED,
                                'device_id': "",
                                'device_owner': ""}}
-            mgmt_port = self._core_plugin.create_port(self._context, p_spec)
             try:
+                mgmt_port = self._core_plugin.create_port(self._context, p_spec)
                 # No security groups on the trunk ports since
                 # they have no IP address
                 p_spec['port']['security_groups'] = []
