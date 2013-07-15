@@ -24,7 +24,10 @@ from quantum.common import exceptions as q_exc
 from quantum import context as q_context
 from quantum import manager
 from quantum.openstack.common import uuidutils
+from quantum.openstack.common import log as logging
 from quantum.plugins.cisco.l3.common import constants
+
+LOG = logging.getLogger(__name__)
 
 
 # TODO(bob-melander): This should be used as a driver and fake version should
@@ -40,7 +43,7 @@ class ServiceVMManager:
         self._core_plugin = manager.QuantumManager.get_plugin()
 
     def dispatch_service_vm(self, vm_image, vm_flavor, mgmt_port,
-                                 ports=None):
+                            ports=None):
         nics = [{'port-id': mgmt_port['id']}]
 
         for port in ports:
@@ -167,27 +170,27 @@ class ServiceVMManager:
     # TODO(bob-melander): Move this to fake_service_vm_lib.py file
     # with FakeServiceVMManager
     def dispatch_service_vm_fake(self, vm_image, vm_flavor, mgmt_port, ports):
-        vm_id=uuidutils.generate_uuid()
+        vm_id = uuidutils.generate_uuid()
 
         if mgmt_port is not None:
-            p_dict = { 'port': { 'device_id': vm_id,
-                                 'device_owner': 'nova'}}
+            p_dict = {'port': {'device_id': vm_id,
+                               'device_owner': 'nova'}}
             self._core_plugin.update_port(self._context, mgmt_port['id'],
                                           p_dict)
 
         for port in ports:
-            p_dict = { 'port': { 'device_id': vm_id,
-                                 'device_owner': 'nova'}}
+            p_dict = {'port': {'device_id': vm_id,
+                               'device_owner': 'nova'}}
             self._core_plugin.update_port(self._context, port['id'], p_dict)
 
-        myserver = { 'server': { 'adminPass': "MVk5HPrazHcG",
-                     'id': vm_id,
-                     'links': [ { 'href': "http://openstack.example.com/v2/"
+        myserver = {'server': {'adminPass': "MVk5HPrazHcG",
+                    'id': vm_id,
+                    'links': [{'href': "http://openstack.example.com/v2/"
+                                        "openstack/servers/" + vm_id,
+                               'rel': "self"},
+                                {'href': "http://openstack.example.com/"
                                           "openstack/servers/" + vm_id,
-                                  'rel': "self"},
-                                { 'href': "http://openstack.example.com/"
-                                          "openstack/servers/" + vm_id,
-                                  'rel': "bookmark" }]}}
+                                 'rel': "bookmark"}]}}
 
         return myserver['server']
 
