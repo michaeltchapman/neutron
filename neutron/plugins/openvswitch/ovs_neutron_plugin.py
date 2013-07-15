@@ -161,7 +161,7 @@ class OVSRpcCallbacks(dhcp_rpc_base.DhcpRpcCallbackMixin,
         entry['tunnels'] = tunnels
         # Notify all other listening agents
         self.notifier.tunnel_update(rpc_context, tunnel.ip_address,
-                                    tunnel.id)
+                                    tunnel.id, cfg.CONF.OVS.tunnel_type)
         # Return the list of tunnels IP's to the agent
         return entry
 
@@ -206,11 +206,12 @@ class AgentNotifierApi(proxy.RpcProxy,
                                        physical_network=physical_network),
                          topic=self.topic_port_update)
 
-    def tunnel_update(self, context, tunnel_ip, tunnel_id):
+    def tunnel_update(self, context, tunnel_ip, tunnel_id, tunnel_type):
         self.fanout_cast(context,
                          self.make_msg('tunnel_update',
                                        tunnel_ip=tunnel_ip,
-                                       tunnel_id=tunnel_id),
+                                       tunnel_id=tunnel_id,
+                                       tunnel_type=tunnel_type),
                          topic=self.topic_tunnel_update)
 
 
@@ -218,7 +219,8 @@ class OVSNeutronPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
                          extraroute_db.ExtraRoute_db_mixin,
                          l3_gwmode_db.L3_NAT_db_mixin,
                          sg_db_rpc.SecurityGroupServerRpcMixin,
-                         agentschedulers_db.AgentSchedulerDbMixin,
+                         agentschedulers_db.L3AgentSchedulerDbMixin,
+                         agentschedulers_db.DhcpAgentSchedulerDbMixin,
                          portbindings_db.PortBindingMixin):
 
     """Implement the Neutron abstractions using Open vSwitch.
@@ -247,7 +249,9 @@ class OVSNeutronPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
 
     _supported_extension_aliases = ["provider", "router", "ext-gw-mode",
                                     "binding", "quotas", "security-group",
-                                    "agent", "extraroute", "agent_scheduler"]
+                                    "agent", "extraroute",
+                                    "l3_agent_scheduler",
+                                    "dhcp_agent_scheduler"]
 
     @property
     def supported_extension_aliases(self):
@@ -277,6 +281,11 @@ class OVSNeutronPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
                       self.tenant_network_type)
             sys.exit(1)
         self.enable_tunneling = cfg.CONF.OVS.enable_tunneling
+        if self.enable_tunneling:
+            self.tunnel_type = cfg.CONF.OVS.tunnel_type or constants.TYPE_GRE
+        elif cfg.CONF.OVS.tunnel_type:
+            self.tunnel_type = cfg.CONF.OVS.tunnel_type
+            self.enable_tunneling = True
         self.tunnel_id_ranges = []
         if self.enable_tunneling:
             self._parse_tunnel_id_ranges()

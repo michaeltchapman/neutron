@@ -42,11 +42,13 @@ from neutron.db import agentschedulers_db
 from neutron.db import api as db
 from neutron.db import db_base_plugin_v2
 from neutron.db import dhcp_rpc_base
+from neutron.db import extraroute_db
 from neutron.db import l3_db
 from neutron.db import models_v2
 from neutron.db import portsecurity_db
 from neutron.db import quota_db  # noqa
 from neutron.db import securitygroups_db
+from neutron.extensions import extraroute
 from neutron.extensions import l3
 from neutron.extensions import portsecurity as psec
 from neutron.extensions import providernet as pnet
@@ -111,7 +113,7 @@ def create_nvp_cluster(cluster_opts, concurrent_connections,
 class NVPRpcCallbacks(dhcp_rpc_base.DhcpRpcCallbackMixin):
 
     # Set RPC API version to 1.0 by default.
-    RPC_API_VERSION = '1.0'
+    RPC_API_VERSION = '1.1'
 
     def create_rpc_dispatcher(self):
         '''Get the rpc dispatcher for this manager.
@@ -124,7 +126,7 @@ class NVPRpcCallbacks(dhcp_rpc_base.DhcpRpcCallbackMixin):
 
 
 class NvpPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
-                  l3_db.L3_NAT_db_mixin,
+                  extraroute_db.ExtraRoute_db_mixin,
                   portsecurity_db.PortSecurityDbMixin,
                   securitygroups_db.SecurityGroupDbMixin,
                   mac_db.MacLearningDbMixin,
@@ -132,14 +134,15 @@ class NvpPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
                   qos_db.NVPQoSDbMixin,
                   nvp_sec.NVPSecurityGroups,
                   nvp_meta.NvpMetadataAccess,
-                  agentschedulers_db.AgentSchedulerDbMixin):
+                  agentschedulers_db.DhcpAgentSchedulerDbMixin):
     """L2 Virtual network plugin.
 
     NvpPluginV2 is a Neutron plugin that provides L2 Virtual Network
     functionality using NVP.
     """
 
-    supported_extension_aliases = ["mac-learning",
+    supported_extension_aliases = ["extraroute",
+                                   "mac-learning",
                                    "network-gateway",
                                    "nvp-qos",
                                    "port-security",
@@ -1033,6 +1036,8 @@ class NvpPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
         return net
 
     def get_ports(self, context, filters=None, fields=None):
+        if filters is None:
+            filters = {}
         with context.session.begin(subtransactions=True):
             neutron_lports = super(NvpPluginV2, self).get_ports(
                 context, filters)
@@ -1456,7 +1461,7 @@ class NvpPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
                 self._update_router_gw_info(context, router_db['id'], gw_info)
         return self._make_router_dict(router_db)
 
-    def update_router(self, context, id, router):
+    def update_router(self, context, router_id, router):
         # Either nexthop is updated or should be kept as it was before
         r = router['router']
         nexthop = None
@@ -1477,22 +1482,45 @@ class NvpPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
                     ext_subnet = ext_net.subnets[0]
                     nexthop = ext_subnet.gateway_ip
         try:
-            nvplib.update_lrouter(self.cluster, id,
-                                  router['router'].get('name'), nexthop)
+            for route in r.get('routes', []):
+                if route['destination'] == '0.0.0.0/0':
+                    msg = _("'routes' cannot contain route '0.0.0.0/0', "
+                            "this must be updated through the default "
+                            "gateway attribute")
+                    raise q_exc.BadRequest(resource='router', msg=msg)
+            previous_routes = nvplib.update_lrouter(
+                self.cluster, router_id, r.get('name'),
+                nexthop, routes=r.get('routes'))
         # NOTE(salv-orlando): The exception handling below is not correct, but
         # unfortunately nvplib raises a neutron notfound exception when an
         # object is not found in the underlying backend
         except q_exc.NotFound:
             # Put the router in ERROR status
             with context.session.begin(subtransactions=True):
-                router_db = self._get_router(context, id)
+                router_db = self._get_router(context, router_id)
                 router_db['status'] = constants.NET_STATUS_ERROR
             raise nvp_exc.NvpPluginException(
-                err_msg=_("Logical router %s not found on NVP Platform") % id)
+                err_msg=_("Logical router %s not found "
+                          "on NVP Platform") % router_id)
         except NvpApiClient.NvpApiException:
             raise nvp_exc.NvpPluginException(
                 err_msg=_("Unable to update logical router on NVP Platform"))
-        return super(NvpPluginV2, self).update_router(context, id, router)
+        except nvp_exc.NvpInvalidVersion:
+            msg = _("Request cannot contain 'routes' with the NVP "
+                    "platform currently in execution. Please, try "
+                    "without specifying the static routes.")
+            LOG.exception(msg)
+            raise q_exc.BadRequest(resource='router', msg=msg)
+        try:
+            return super(NvpPluginV2, self).update_router(context,
+                                                          router_id, router)
+        except (extraroute.InvalidRoutes,
+                extraroute.RouterInterfaceInUseByRoute,
+                extraroute.RoutesExhausted):
+            with excutils.save_and_reraise_exception():
+                # revert changes made to NVP
+                nvplib.update_explicit_routes_lrouter(
+                    self.cluster, router_id, previous_routes)
 
     def delete_router(self, context, id):
         with context.session.begin(subtransactions=True):

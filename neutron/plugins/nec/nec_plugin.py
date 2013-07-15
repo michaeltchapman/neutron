@@ -64,7 +64,8 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
                   extraroute_db.ExtraRoute_db_mixin,
                   l3_gwmode_db.L3_NAT_db_mixin,
                   sg_db_rpc.SecurityGroupServerRpcMixin,
-                  agentschedulers_db.AgentSchedulerDbMixin):
+                  agentschedulers_db.L3AgentSchedulerDbMixin,
+                  agentschedulers_db.DhcpAgentSchedulerDbMixin):
     """NECPluginV2 controls an OpenFlow Controller.
 
     The Neutron NECPluginV2 maps L2 logical networks to L2 virtualized networks
@@ -79,7 +80,9 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
     """
     _supported_extension_aliases = ["router", "ext-gw-mode", "quotas",
                                     "binding", "security-group",
-                                    "extraroute", "agent", "agent_scheduler"]
+                                    "extraroute", "agent",
+                                    "l3_agent_scheduler",
+                                    "dhcp_agent_scheduler"]
 
     @property
     def supported_extension_aliases(self):
@@ -121,9 +124,8 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         self.l3_agent_notifier = l3_rpc_agent_api.L3AgentNotify
 
         # NOTE: callback_sg is referred to from the sg unit test.
-        self.callback_nec = NECPluginV2RPCCallbacks(self)
         self.callback_sg = SecurityGroupServerRpcCallback()
-        callbacks = [self.callback_nec,
+        callbacks = [NECPluginV2RPCCallbacks(self),
                      DhcpRpcCallback(), L3RpcCallback(),
                      self.callback_sg,
                      agents_db.AgentExtRpcCallback()]
@@ -599,7 +601,7 @@ class NECPluginV2AgentNotifierApi(proxy.RpcProxy,
 
 class DhcpRpcCallback(dhcp_rpc_base.DhcpRpcCallbackMixin):
     # DhcpPluginApi BASE_RPC_API_VERSION
-    RPC_API_VERSION = '1.0'
+    RPC_API_VERSION = '1.1'
 
 
 class L3RpcCallback(l3_rpc_base.L3RpcCallbackMixin):
