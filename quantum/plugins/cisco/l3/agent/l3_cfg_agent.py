@@ -295,6 +295,16 @@ class L3NATAgent(manager.Manager):
         csr_driver = self._he.get_driver(ri.router_id)
         csr_driver.remove_floating_ip(floating_ip, fixed_ip, vrf_name)
 
+    def _csr_add_default_route(self, ri, gw_ip):
+        vrf_name = self._csr_get_vrf_name(ri)
+        csr_driver = self._he.get_driver(ri.router_id)
+        csr_driver.add_default_static_route(gw_ip, vrf_name)
+
+    def _csr_remove_default_route(self, ri, gw_ip):
+        vrf_name = self._csr_get_vrf_name(ri)
+        csr_driver = self._he.get_driver(ri.router_id)
+        csr_driver.remove_default_static_route(gw_ip, vrf_name)
+
     def _csr_update_routing_table(self, ri, cmd, route):
         #cmd = ['ip', 'route', operation, 'to', route['destination'],
         #       'via', route['nexthop']]
@@ -459,19 +469,11 @@ class L3NATAgent(manager.Manager):
         self._csr_create_subinterface(ri, ext_itfc_no, outer_vlan,
                                       [ex_gw_port['ip_cidr']])
         #ToDo(Hareesh) : Check need to send gratuitous ARP
-        #ToDo: Check if we need this
         ex_gw_ip = ex_gw_port['subnet']['gateway_ip']
         if ex_gw_ip:
-            #ToDo (Hareesh): Set default gateway/network
-            # cmd = ['route', 'add', 'default', 'gw', gw_ip]
-            # if self.conf.use_namespaces:
-            #     ip_wrapper = ip_lib.IPWrapper(self.root_helper,
-            #                                   namespace=ri.ns_name())
-            #     ip_wrapper.netns.execute(cmd, check_exit_code=False)
-            # else:
-            #     utils.execute(cmd, check_exit_code=False,
-            #                   root_helper=self.root_helper)
-            pass
+            #Set default route via this network's gateway ip
+            # In linux : cmd = ['route', 'add', 'default', 'gw', gw_ip]
+            self._csr_add_default_route(ri, ex_gw_ip)
 
         #Apply NAT rules for internal networks
         if len(ri.internal_ports) > 0:
@@ -506,9 +508,13 @@ class L3NATAgent(manager.Manager):
                                                       internal_cidr,
                                                       inner_vlan,
                                                       outer_vlan)
-        #Remove external network subinterface
+        ex_gw_ip = ex_gw_port['subnet']['gateway_ip']
+        if ex_gw_ip:
+        #Remove default route via this network's gateway ip
+            self._csr_remove_default_route(ri, ex_gw_ip)
+        #Finally, remove external network subinterface
         self._csr_remove_subinterface(ri, ext_infc_no, outer_vlan, ip)
-        #ToDo(Hareesh): Remove default network
+
 
     def internal_network_added(self, ri, ex_gw_port,
                                internal_cidr, trunk_info):

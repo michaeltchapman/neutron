@@ -251,15 +251,15 @@ class CiscoCSRDriver():
         #We acquire a lock on the running config and process the edits
         #as a transaction
         with conn.locked(target='running'):
-            confstr = snippets.REMOVE_ACL % acl_no
-            rpc_obj = conn.edit_config(target='running', config=confstr)
-            print self._check_response(rpc_obj, 'REMOVE_ACL')
-
             confstr = snippets.SNAT_CFG % (acl_no, outer_intfc, vrf_name)
             if self.cfg_exists(confstr):
                 confstr = snippets.REMOVE_DYN_SRC_TRL_INTFC % (acl_no, outer_intfc, vrf_name)
                 rpc_obj = conn.edit_config(target='running', config=confstr)
                 print self._check_response(rpc_obj, 'REMOVE_DYN_SRC_TRL_INTFC')
+
+            confstr = snippets.REMOVE_ACL % acl_no
+            rpc_obj = conn.edit_config(target='running', config=confstr)
+            print self._check_response(rpc_obj, 'REMOVE_ACL')
 
             confstr = snippets.REMOVE_NAT % (inner_intfc, 'inside')
             rpc_obj = conn.edit_config(target='running', config=confstr)
@@ -304,6 +304,22 @@ class CiscoCSRDriver():
         parse = CiscoConfParse(ioscfg)
         res = parse.find_lines('ip route')
         return res
+
+    def add_default_static_route(self, gw_ip, vrf):
+        conn = self._get_connection()
+        confstr = snippets.DEFAULT_ROUTE_CFG % (vrf, gw_ip)
+        if not self.cfg_exists(confstr):
+                confstr = snippets.SET_DEFAULT_ROUTE % (vrf, gw_ip)
+                rpc_obj = conn.edit_config(target='running', config=confstr)
+                print self._check_response(rpc_obj, 'SET_DEFAULT_ROUTE')
+
+    def remove_default_static_route(self, gw_ip, vrf):
+        conn = self._get_connection()
+        confstr = snippets.DEFAULT_ROUTE_CFG % (vrf, gw_ip)
+        if self.cfg_exists(confstr):
+                confstr = snippets.REMOVE_DEFAULT_ROUTE % (vrf, gw_ip)
+                rpc_obj = conn.edit_config(target='running', config=confstr)
+                print self._check_response(rpc_obj, 'REMOVE_DEFAULT_ROUTE')
 
     def _check_response_E(self, rpc_obj, snippet_name):
         #ToDo(Hareesh): This is not working. Need to be fixed

@@ -203,3 +203,21 @@ REMOVE_IP_ROUTE = """
         </cli-config-data>
 </config>
 """
+
+DEFAULT_ROUTE_CFG = 'ip route vrf %s 0.0.0.0 0.0.0.0 %s'
+
+SET_DEFAULT_ROUTE = """
+<config>
+        <cli-config-data>
+            <cmd>ip route vrf %s 0.0.0.0 0.0.0.0 %s</cmd>
+        </cli-config-data>
+</config>
+"""
+
+REMOVE_DEFAULT_ROUTE = """
+<config>
+        <cli-config-data>
+            <cmd>no ip route vrf %s 0.0.0.0 0.0.0.0 %s</cmd>
+        </cli-config-data>
+</config>
+"""
