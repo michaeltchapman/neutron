@@ -275,7 +275,7 @@ class L3_router_appliance_db_mixin(extraroute_db.ExtraRoute_db_mixin):
                 LOG.error(_('There is no security group for csr mgmt. '
                             'Please refer to admin guide and '
                             'create one.'))
-        return cls._mgmt_nw_uuid
+        return cls._csr_mgmt_sec_grp_id
 
     def create_router(self, context, router):
         r = router['router']
