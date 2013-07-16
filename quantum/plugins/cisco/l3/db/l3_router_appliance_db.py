@@ -252,10 +252,15 @@ class L3_router_appliance_db_mixin(extraroute_db.ExtraRoute_db_mixin):
         return cls._svc_vm_mgr
 
     @classmethod
-    def sec_grp_id(cls):
+    def csr_mgmt_sec_grp_id(cls):
         #Get the id for the csr_mgmt_security_group_id
-        sec_grp_name = cfg.CONF.default_security_group
-        pass
+        tenant_id = cls.l3_tenant_id()
+        result = manager.QuantumManager.get_plugin().get_security_groups(
+            q_context.get_admin_context(),
+            {'tenant_id': [tenant_id],
+             'name': [cfg.CONF.default_security_group]},
+            ['id'])
+        return result
 
     def create_router(self, context, router):
         r = router['router']
@@ -450,6 +455,7 @@ class L3_router_appliance_db_mixin(extraroute_db.ExtraRoute_db_mixin):
                 mgmt_port, t1_n, t1_p, t2_n, t2_p = (
                      svm.create_service_vm_resources(
                          self.mgmt_nw_id(),
+                         self.csr_mgmt_sec_grp_id(),
                          self.l3_tenant_id(),
                          cfg.CONF.max_routers_per_csr1kv))
                 if mgmt_port is None:

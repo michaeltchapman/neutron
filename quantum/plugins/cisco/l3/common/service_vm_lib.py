@@ -115,9 +115,11 @@ class ServiceVMManager:
                             'service vm due to %(err)s'),
                           {'net_id': item['id'], 'err': e})
 
-    def create_service_vm_resources(self, mgmt_nw_id, tenant_id, max_hosted):
+    def create_service_vm_resources(self, mgmt_nw_id, csr_mgmt_sec_grp_id,
+                                    tenant_id, max_hosted):
         mgmt_port = None
         t1_n, t1_p, t2_n, t2_p = [], [], [], []
+        LOG.debug(_('******Mgmt_sec_group_id is %s *****', csr_mgmt_sec_grp_id))
         if mgmt_nw_id is not None and tenant_id is not None:
             # Create port for mgmt interface
             p_spec = {'port': {'tenant_id': tenant_id,
@@ -126,6 +128,7 @@ class ServiceVMManager:
                                'network_id': mgmt_nw_id,
                                'mac_address': attributes.ATTR_NOT_SPECIFIED,
                                'fixed_ips': attributes.ATTR_NOT_SPECIFIED,
+                               'security_groups': [csr_mgmt_sec_grp_id],
                                'device_id': "",
                                'device_owner': ""}}
             try:
