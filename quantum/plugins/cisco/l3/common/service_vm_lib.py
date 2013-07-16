@@ -119,7 +119,7 @@ class ServiceVMManager:
                                     tenant_id, max_hosted):
         mgmt_port = None
         t1_n, t1_p, t2_n, t2_p = [], [], [], []
-        LOG.debug(_('******Mgmt_sec_group_id is %s *****', csr_mgmt_sec_grp_id))
+        LOG.debug(_('******Mgmt_sec_group_id is %s *****'), csr_mgmt_sec_grp_id)
         if mgmt_nw_id is not None and tenant_id is not None:
             # Create port for mgmt interface
             p_spec = {'port': {'tenant_id': tenant_id,
