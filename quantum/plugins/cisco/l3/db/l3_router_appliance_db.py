@@ -176,6 +176,7 @@ class L3_router_appliance_db_mixin(extraroute_db.ExtraRoute_db_mixin):
     _mgmt_nw_uuid = None
     _l3_tenant_uuid = None
     _svc_vm_mgr = None
+    _csr_mgmt_sec_grp_id = None
 
     hosting_scheduler = None
 
@@ -253,14 +254,28 @@ class L3_router_appliance_db_mixin(extraroute_db.ExtraRoute_db_mixin):
 
     @classmethod
     def csr_mgmt_sec_grp_id(cls):
-        #Get the id for the csr_mgmt_security_group_id
-        tenant_id = cls.l3_tenant_id()
-        result = manager.QuantumManager.get_plugin().get_security_groups(
-            q_context.get_admin_context(),
-            {'tenant_id': [tenant_id],
-             'name': [cfg.CONF.default_security_group]},
-            ['id'])
-        return result
+        if cls._csr_mgmt_sec_grp_id is None:
+            #Get the id for the csr_mgmt_security_group_id
+            tenant_id = cls.l3_tenant_id()
+            res = manager.QuantumManager.get_plugin().get_security_groups(
+                q_context.get_admin_context(),
+                {'tenant_id': [tenant_id],
+                 'name': [cfg.CONF.default_security_group]},
+                ['id'])
+            if len(res) == 1:
+                sec_grp_id = res[0].get('id', None)
+                cls._csr_mgmt_sec_grp_id = sec_grp_id
+            elif len(res) > 1:
+                # CSR Mgmt sec group must be unique.
+                LOG.error(_('The security group for csr mgmt '
+                            'does not have unique name. Please refer to '
+                            'admin guide and create one.'))
+            else:
+                # CSR Mgmt security group is not present.
+                LOG.error(_('There is no security group for csr mgmt. '
+                            'Please refer to admin guide and '
+                            'create one.'))
+        return cls._mgmt_nw_uuid
 
     def create_router(self, context, router):
         r = router['router']
