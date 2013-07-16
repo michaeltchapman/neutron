@@ -66,6 +66,8 @@ router_appliance_opts = [
                help=_("Glance image used for CSR1kv VM")),
     cfg.StrOpt('management_network', default='osn_mgmt_nw',
                help=_("Name of management network for CSR VM configuration")),
+    cfg.StrOpt('default_security_group', default='mgmt_sec_grp',
+               help=_("Default security group applied on mgmt port")),
     cfg.StrOpt('hosting_scheduler_driver',
                default='quantum.plugins.cisco.l3.scheduler.'
                        'l3_hosting_entity_scheduler.L3HostingEntityScheduler',
@@ -248,6 +250,12 @@ class L3_router_appliance_db_mixin(extraroute_db.ExtraRoute_db_mixin):
                 user=username, passwd=pw, l3_admin_tenant=tenant,
                 auth_url=auth_url)
         return cls._svc_vm_mgr
+
+    @classmethod
+    def sec_grp_id(cls):
+        #Get the id for the csr_mgmt_security_group_id
+        sec_grp_name = cfg.CONF.default_security_group
+        pass
 
     def create_router(self, context, router):
         r = router['router']
